@@ -1,0 +1,6 @@
+dataset/*
+!dataset/adult/
+!dataset/adult/**
+/results
+
+example.ipynb

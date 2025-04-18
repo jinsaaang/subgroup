@@ -1,0 +1,35 @@
+# Dataset config
+dataset: "adult"  # or "credit", "compas", etc.
+
+# Model config
+# model: "xgboost"  # or "node", "tabnet"
+# model_params:
+#   n_estimators: 100
+#   max_depth: 4
+#   learning_rate: 0.05
+#   subsample: 0.8
+#   colsample_bytree: 0.8
+#   random_state: 42
+
+model: "node"
+model_params:
+  # input_dim: 12 
+  hidden_dim: 64 
+  num_trees: 5  
+  depth: 3  
+  num_classes: 2  
+
+# Clustering config
+cluster: "dpgmm"  # or "hdbscan", "spectral"
+cluster_params:
+  n_components: 10  # max number of components for DP-GMM
+  weight_concentration_prior: 0.01
+  max_iter: 300
+  random_state: 42
+
+train_params:
+  epochs: 10
+  lr: 0.001
+
+# Iteration config
+n_iters: 3  
