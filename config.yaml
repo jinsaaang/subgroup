@@ -1,35 +1,18 @@
-# Dataset config
-dataset: "adult"  # or "credit", "compas", etc.
+# General settings
+dataset: "adult"  # 
+random_state: 1  # 
 
-# Model config
-# model: "xgboost"  # or "node", "tabnet"
-# model_params:
-#   n_estimators: 100
-#   max_depth: 4
-#   learning_rate: 0.05
-#   subsample: 0.8
-#   colsample_bytree: 0.8
-#   random_state: 42
+# Training hyperparameters
+batch_size: 256
+learning_rate: 0.001
 
-model: "node"
-model_params:
-  # input_dim: 12 
-  hidden_dim: 64 
-  num_trees: 5  
-  depth: 3  
-  num_classes: 2  
+# RF-AE training schedule
+n_pre_epochs: 100    # ae pretrain epochs
+n_rounds: 5         # total rounds of training
+n_epochs: 10        # ae training epochs per round
 
-# Clustering config
-cluster: "dpgmm"  # or "hdbscan", "spectral"
-cluster_params:
-  n_components: 10  # max number of components for DP-GMM
-  weight_concentration_prior: 0.01
-  max_iter: 300
-  random_state: 42
-
-train_params:
-  epochs: 10
-  lr: 0.001
-
-# Iteration config
-n_iters: 3  
+# Optional advanced parameters
+# lambda_recon: 1e-3  # 
+# lambda_triplet: 1.0  # 
+# margin: 0.2         # 
+# tolerance_nmi: 1e-3  # 

@@ -2,107 +2,78 @@ import yaml
 import numpy as np
 import pandas as pd
 import torch
-import gc
+import sklearn
 import os
 from datetime import datetime
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 
-from models.vime_encoder import VIMEEncoder
-from models.classifier import XGBoostClassifier, NODE, TabNet
-from models.soft_cluster import DPGMM
+# from models.vime_encoder import VIMEEncoder
+# from models.classifier import XGBoostClassifier, NODE, TabNet
+# from models.soft_cluster import DPGMM
 from utils.loader import load_data
-from utils.train import Trainer
-from utils.error import compute_error, adjust_error
-from utils.visualizer import visualize_umap
+# from utils.visualizer import plot_sillhouette, plot_dbindex, plot_umap, plot_group_acc
+from rfae.autoencoder import Trainer
 
-with open('config.yaml', 'r') as file:
+import rfphate
+import seaborn as sns
+
+# Load Train Arguments
+with open('./config.yaml', 'r') as file:
     config = yaml.safe_load(file)
 
-model_type = {
-    'node': NODE,
-    'tabnet': TabNet,
-    'xgboost': XGBoostClassifier
-}
-
-cluster_type = {
-    'hdbscan': 'PlainDPGMM',
-    'dpgmm': DPGMM,
-    'spectral': 'SoftCluster'
-}
-
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(f"Using device: {device}")
+print(f"[INFO] Using {device}")
 
 timestamp = datetime.now().strftime("%m%d%H%M")
 exp_dir = f'./results/exp_{timestamp}'
 os.makedirs(exp_dir, exist_ok=True)
 dataset = config['dataset'].lower()
-n_iters = config['n_iters']
 
-train_loader, valid_loader, test_loader, train_df = load_data(dataset)
+batch_size = config['batch_size']
+lr = config['learning_rate']
+random_state = config['random_state']
 
-# Get Latent Representations
-X_train = train_loader.dataset.features
-X_valid = valid_loader.dataset.features
-input_dim = X_train.shape[1]
-encoder = VIMEEncoder(input_dim=input_dim, alpha=1.0, hidden_dim=input_dim)
-encoder.train_encoder(X_valid)
-z_train = encoder.encode(X_train) 
-z_valid = encoder.encode(X_valid) 
+e_pre = config['n_pre_epochs']
+rounds = config['n_rounds']
+epochs = config['n_epochs']
 
-# Latent Grouping via Soft Clustering
-cluster_name = cluster_type[config['cluster']]
-cluster_model = cluster_name(config['cluster_params'])
-cluster_model.fit(z_valid)
-train_group_labels = cluster_model.predict(z_train) # hard cluster labels
-valid_group_labels = cluster_model.predict(z_valid) # hard cluster labels
-train_group = cluster_model.predict_proba(z_train) # soft cluster probabilities
-valid_group = cluster_model.predict_proba(z_valid) # soft cluster probabilities
+# Load Data
+# train_loader, test_loader, train_df = load_data(dataset) # valid 를 없애야함, numpy로 받아오기기
+# X_train = train_loader.dataset.features
+# y_train = train_loader.dataset.labels
+# n_train = X_train.shape[0]
+# input_dim = X_train.shape[1]
 
-# ERM Model 
-model_name = model_type[config['model']]
-model = model_name(input_dim=input_dim, config=config['model_params']).to(device)
-trainer = Trainer(model) # loss_fn
-trainer.train(train_loader, config['train_params'], device=device)
-y_train_true = train_loader.dataset.labels
-y_valid_true = valid_loader.dataset.labels
+data = rfphate.load_data('titanic')
+X_train, y_train = rfphate.dataprep(data)
+print("[INFO] Data loaded")
 
-y_train_hat = trainer.predict(train_loader)
-y_valid_hat = trainer.predict(valid_loader)
+# RF-PHATE
+rfphate_op = rfphate.RFPHATE(random_state = 42, n_landmark=100)
+z_geom = rfphate_op.fit_transform(X_train, y_train)
+p_land, _ = rfphate_op.dimension_reduction() # p_land, cluster_label
+print("[INFO] RF-PHATE done")
 
-# prediction error
-train_error = compute_error(y_train_hat, y_train_true)
-valid_error = compute_error(y_valid_hat, y_valid_true)
-print("[Train] Model Training Done")
+# Train Autoencoder
+trainer = Trainer(p_land, y_train, z_geom, lr=lr, batch=batch_size, device=device)
+clusters, z_hat = trainer.train(E_pre=e_pre, rounds=rounds, T=epochs)
+# train_df['cluster'] = clusters
+data['cluster'] = clusters
+initial_clusters = trainer.initial_clusters
+print("[INFO] Autoencoder training done")
 
-# Visualize cluster labels
-visualize_umap(z_valid, valid_group_labels, valid_error, iter=0, dir=exp_dir)
-print("[Clustering Done]")
+# print(train_df.head())
+print(data.head())
+print(stop)
 
-# Iteration
-for i in range(n_iters):
-    # Error Adjustment via latent group info
-    train_error_adj, valid_error_adj = adjust_error(train_error, valid_error, q_train=train_group, q_valid=valid_group, 
-                                                    g_train=train_group_labels, y_train=y_train_true, y_valid=y_valid_true,
-                                                    alpha=1.0, beta=1.0)
+# Visualize - sillhoute score (Original Embedding vs Triplet Embedding)
+# plot_sillhouette(z_geom, z_hat)
+# plot_dbindex(z_geom, z_hat)
+# plot_umap(z_geom, z_hat)
+# plot_group_acc(train_loader, test_loader, initial_clusters, clusters) # initial clustering?
 
-    # Joint Embedding z_[z_j, r^adj_j] (concatenate z_valid and error_adj)
-    z_valid_concat = torch.cat((z_valid, valid_error_adj), dim=1)
-    z_train_concat = torch.cat((z_train, train_error_adj), dim=1)
-    
-    # Error-Aware Re-Clustering
-    del cluster_model
-    gc.collect()
+# plot_error_dist(initial_clusters, clusters)
 
-    cluster_model = cluster_name(config['cluster_params']) # reinitialize cluster model
-    cluster_model.fit(z_valid_concat)
-    
-    train_group_labels = cluster_model.predict(z_train_concat) 
-    train_group = cluster_model.predict_proba(z_train_concat) # soft cluster probabilities
-    valid_group = cluster_model.predict_proba(z_valid_concat) # soft cluster probabilities
 
-    # Visualize cluster labels after error adjustment
-    visualize_umap(z_valid, valid_group_labels, valid_error_adj, iter=i+1, dir=exp_dir)
-    print(f"[Iteration {i+1} Done]")
