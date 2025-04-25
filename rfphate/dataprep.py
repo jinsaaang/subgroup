@@ -69,4 +69,4 @@ def dataprep(data, label_col_idx = 0, transform = 'normalize'):
     if label_col_idx is None:
         return x.to_numpy()
     else:
-        return x.to_numpy(), y
+        return x.to_numpy(), y.to_numpy()

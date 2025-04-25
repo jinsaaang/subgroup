@@ -8,8 +8,8 @@ learning_rate: 0.001
 
 # RF-AE training schedule
 n_pre_epochs: 100    # ae pretrain epochs
-n_rounds: 5         # total rounds of training
-n_epochs: 10        # ae training epochs per round
+n_rounds: 100         # total rounds of training
+n_epochs: 50        # ae training epochs per round
 
 # Optional advanced parameters
 # lambda_recon: 1e-3  # 

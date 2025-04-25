@@ -25,21 +25,24 @@ def pairwise_cosine(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
 # ------------------ Model ------------------ #
 class RFAE(nn.Module):
     """Simple RF-AE encoder/decoder"""
-    def __init__(self, in_dim: int, z_dim: int = 32, hid: int = 256):
+    def __init__(self, in_dim: int, z_dim: int = 32, hid: int = 256): # 
         super().__init__()
         self.encoder = nn.Sequential(
-            nn.Linear(in_dim, hid), nn.ReLU(),
+            nn.Linear(in_dim, hid), 
+            nn.ReLU(),
             nn.Linear(hid, z_dim)
         )
         self.decoder = nn.Sequential(
-            nn.Linear(z_dim, hid), nn.ReLU(),
-            nn.Linear(hid, in_dim), nn.Softmax(dim=1)
+            nn.Linear(z_dim, hid), 
+            nn.ReLU(),
+            nn.Linear(hid, in_dim), 
+            nn.Softmax(dim=1)
         )
+
     def forward(self, x):
         z = self.encoder(x)
         recon = self.decoder(z)
         return z, recon  # recon already prob. simplex
-
 # ------------------ Triplet Miner ------------------ #
 class EasyHardMiner:
     """
@@ -49,6 +52,11 @@ class EasyHardMiner:
         self.update_masks(y_true, clusters)
     # -----------------------------------------------------------------
     def update_masks(self, y_true, clusters):
+        if isinstance(y_true, torch.Tensor):
+            y_true = y_true.cpu().numpy()
+        if isinstance(clusters, torch.Tensor):
+            clusters = clusters.cpu().numpy()
+
         y = y_true[:, None]
         c = clusters[:, None]
         self.same_y  = torch.from_numpy((y == y.T)).bool()
@@ -90,8 +98,8 @@ class EasyHardMiner:
                torch.tensor(neg_idx, device=device)
 
 # ------------------ Loss ------------------ #
-def triplet_loss(za, zp, zn, margin=0.2):
-    d_pos = F.pairwise_distance(za, zp, p=2)
+def triplet_loss(za, zp, zn, margin=0.2): # margin...
+    d_pos = F.pairwise_distance(za, zp, p=2) # metric L2 or cosine 
     d_neg = F.pairwise_distance(za, zn, p=2)
     loss = F.relu(d_pos - d_neg + margin).mean()
     return loss
@@ -99,8 +107,10 @@ def triplet_loss(za, zp, zn, margin=0.2):
 # ------------------ Trainer ------------------ #
 class Trainer:
     def __init__(
-        self, x_gap: np.ndarray, y_true: np.ndarray,
+        self, x_gap: np.ndarray, 
+        y_true: np.ndarray,
         z_star: np.ndarray,   # RF-PHATE embeddings (n, z_dim)
+        n_clusters: int,
         lr=1e-3, batch=256, device="cuda"
     ):
         set_seed()
@@ -108,13 +118,14 @@ class Trainer:
         self.X = torch.tensor(x_gap, dtype=torch.float32).to(device)
         self.z_star = torch.tensor(z_star, dtype=torch.float32).to(device)
         self.labels = y_true
-        # ------- model
+        # ------- model -------
         self.model = RFAE(in_dim=x_gap.shape[1], z_dim=z_star.shape[1]).to(device)
         self.opt = torch.optim.Adam(self.model.parameters(), lr)
         self.batch = batch
         # initial clusters from z_star
-        self.initial_clusters = self._kmeans_cluster(z_star) 
-        self.clusters = self._kmeans_cluster(z_star)
+        self.n_clusters = n_clusters
+        self.initial_clusters = self._kmeans_cluster(z_star, n_clusters) 
+        self.clusters = self._kmeans_cluster(z_star, n_clusters)
         self.miner = EasyHardMiner(self.labels, self.clusters)
         self.best_clusters = None
         self.best_embeddings = None
@@ -127,8 +138,9 @@ class Trainer:
         return km.labels_
     # --------------------------------------------------
     def reconstruction_loss(self, p, p_hat):
-        # KL divergence ; p,p_hat already on simplex
-        kl = (p * (p.log() - (p_hat+1e-8).log())).sum(dim=1).mean()
+        p = p.clamp(min=1e-8)         
+        p_hat = p_hat.clamp(min=1e-8)   
+        kl = (p * (p.log() - p_hat.log())).sum(dim=1).mean()
         return kl
     # --------------------------------------------------
     def train(
@@ -142,14 +154,14 @@ class Trainer:
         )
         # ---- Stage 1: Pre-train AE ----
         for ep in range(E_pre):
-            losses = self._epoch_step(loader, lambda_r=lambda_r,
+            losses = self._epoch_step(loader, lambda_r=lambda_r, lambda_g=(1-lambda_r),
                              lambda_t=0, miner=None, mode="easy", margin=margin)
-            if ep % 10 == 0:
-                print(f"[Pre-train] Epoch {ep} | "
+            if (ep+1) % 10 == 0:
+                print(f"[Pre-train] Epoch {ep+1} | "
                       f"loss={losses['total']:.4f} | "
                       f"recon={losses['recon']:.4f} | "
                       f"geom={losses['geom']:.4f}")
-        print("✨Pre-train done")
+        print("[Pre-train]✨ Pre-train done")
         
         # ---- Stage 2: Loop ----
         prev_labels = self.clusters.copy()
@@ -160,18 +172,18 @@ class Trainer:
         for r in range(1, rounds+1):
             # fine-tune with easy→hard curriculum
             for t in range(T):
-                mode = "easy" if t < T//2 else "hard"
-                losses = self._epoch_step(loader, lambda_r*0.05, (1-lambda_r)*0.05,
-                                 lambda_t, self.miner, mode, margin)
-                if t % 5 == 0:
-                    print(f"[Round {r}][Epoch {t}] "
+                mode = "easy" if t < T//5 else "hard"
+                losses = self._epoch_step(loader, lambda_r*0.1, (1-lambda_r)*0.1, # error
+                                 0.9, self.miner, mode, margin)
+                if (t+1) % 5 == 0:
+                    print(f"[Round {r}][Epoch {t+1}] "
                           f"loss={losses['total']:.4f} | "
                           f"recon={losses['recon']:.4f} | "
                           f"geom={losses['geom']:.4f} | "
                           f"triplet={losses['trip']:.4f}")
             # recluster
             z_all = self.model.encoder(self.X).detach().cpu().numpy()
-            self.clusters = self._kmeans_cluster(z_all)
+            self.clusters = self._kmeans_cluster(z_all, self.n_clusters)
             self.miner.update_masks(self.labels, self.clusters)
             nmi = normalized_mutual_info_score(prev_labels, self.clusters)
             print(f"[Round {r}] NMI(prev,new)={nmi:.4f}")
@@ -181,7 +193,7 @@ class Trainer:
                 best_embeddings = z_all.copy()  # 현재 임베딩 저장
 
             if nmi > 1 - tol_nmi:
-                print("🧨Converged: cluster change small")
+                print("🧨 Converged: cluster change small")
                 break
             prev_labels = self.clusters.copy()
         
@@ -190,7 +202,7 @@ class Trainer:
 
         return best_clusters, best_embeddings
     # --------------------------------------------------
-    def _epoch_step(self, loader, lambda_r, lambda_t,
+    def _epoch_step(self, loader, lambda_r, lambda_g, lambda_t,
                     miner: EasyHardMiner, mode, margin):
         self.model.train()
         total_loss = 0.0
@@ -199,19 +211,19 @@ class Trainer:
         trip_loss = 0.0
         n_batches = 0
 
-        for xb, zb in loader:
+        for xb, zb in loader: # xb: (n, land), zb: (n, z_dim)
             xb, zb = xb.to(self.device), zb.to(self.device)
             idx = torch.arange(xb.size(0), device=self.device)
             z, recon = self.model(xb)
-            loss_recon = self.reconstruction_loss(xb, recon)
-            loss_geom = F.mse_loss(z, zb)
-            loss = lambda_r * loss_recon + (1-lambda_r) * loss_geom
+            loss_recon = lambda_r * self.reconstruction_loss(xb, recon)
+            loss_geom = lambda_g * F.mse_loss(z, zb)
+            loss =  loss_recon + loss_geom
 
             loss_triplet = 0.0
             if lambda_t > 0 and miner is not None:
                 anc, pos_i, neg_i = miner.sample_batch(idx.cpu(), mode, device=self.device)
-                loss_triplet = triplet_loss(z[anc], z[pos_i], z[neg_i], margin)
-                loss += lambda_t * loss_triplet
+                loss_triplet = lambda_t * triplet_loss(z[anc], z[pos_i], z[neg_i], margin)
+                loss += loss_triplet
             
             self.opt.zero_grad(); loss.backward(); self.opt.step()
 

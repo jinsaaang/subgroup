@@ -47,17 +47,17 @@ epochs = config['n_epochs']
 # input_dim = X_train.shape[1]
 
 data = rfphate.load_data('titanic')
-X_train, y_train = rfphate.dataprep(data)
+X_train, y_train = rfphate.dataprep(data) # numpy array
 print("[INFO] Data loaded")
 
 # RF-PHATE
 rfphate_op = rfphate.RFPHATE(random_state = 42, n_landmark=100)
 z_geom = rfphate_op.fit_transform(X_train, y_train)
-p_land, _ = rfphate_op.dimension_reduction() # p_land, cluster_label
+p_land, _ = rfphate_op.dimension_reduction() # p_land: (n, land), cluster_label
 print("[INFO] RF-PHATE done")
 
-# Train Autoencoder
-trainer = Trainer(p_land, y_train, z_geom, lr=lr, batch=batch_size, device=device)
+# Train Autoencoder -> p_land: (land, land), y_train: (n,), z_geom: (2, 2)
+trainer = Trainer(p_land, y_train, z_geom, n_clusters=10, lr=lr, batch=batch_size, device=device)
 clusters, z_hat = trainer.train(E_pre=e_pre, rounds=rounds, T=epochs)
 # train_df['cluster'] = clusters
 data['cluster'] = clusters

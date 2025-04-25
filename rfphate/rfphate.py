@@ -333,7 +333,7 @@ def RFPHATE(prediction_type = None,
             if hasattr(P, "toarray"):  # sparse → dense
                 P = P.toarray()
 
-            Z_pca = PCA(n_components=50, random_state=random_state).fit_transform(P)
+            Z_pca = PCA(n_components=50, random_state=self.random_state).fit_transform(P)
 
             # 2. k-means to create landmark clusters
             kmeans = KMeans(n_clusters=n_landmark, random_state=self.random_state)
