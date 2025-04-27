@@ -3,13 +3,14 @@ dataset: "adult"  #
 random_state: 1  # 
 
 # Training hyperparameters
-batch_size: 256
+batch_size: 512
 learning_rate: 0.001
 
 # RF-AE training schedule
 n_pre_epochs: 100    # ae pretrain epochs
 n_rounds: 100         # total rounds of training
-n_epochs: 50        # ae training epochs per round
+n_epochs: 100        # ae training epochs per round
+margin: 0.5          # margin for triplet loss
 
 # Optional advanced parameters
 # lambda_recon: 1e-3  # 

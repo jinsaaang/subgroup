@@ -308,7 +308,8 @@ def RFPHATE(prediction_type = None,
                 A lower-dimensional representation of the data following the RF-PHATE algorithm
             """
             self._fit_transform(x, y, x_test, sample_weight = sample_weight)
-            return self.embedding_
+
+            return self.embedding_, self.leaf_matrix
         
         def dimension_reduction(self):
             """
