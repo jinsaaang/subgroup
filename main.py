@@ -52,7 +52,7 @@ X_train, y_train = rfphate.dataprep(data) # numpy array
 print("[INFO] Data loaded")
 
 # RF-PHATE
-rfphate_op = rfphate.RFPHATE(random_state = 42, n_landmark=100)
+rfphate_op = rfphate.RFPHATE(n_components=10, random_state=42, n_landmark=100)
 z_geom, leaf_matrix = rfphate_op.fit_transform(X_train, y_train)
 p_land, _ = rfphate_op.dimension_reduction() # p_land: (n, land), cluster_label
 print("[INFO] RF-PHATE done")
@@ -74,9 +74,13 @@ print(stop)
 
 # Visualize - sillhoute score (Original Embedding vs Triplet Embedding)
 # plot_sillhouette(z_geom, z_hat)
-# plot_dbindex(z_geom, z_hat)
+# plot_dbindex(z_geom,
+#  z_hat)
 # plot_umap(z_geom, z_hat)
 # plot_group_acc(train_loader, test_loader, initial_clusters, clusters) # initial clustering?
 # plot_error_dist(initial_clusters, clusters)
 
 # Retrain Classifier
+
+
+

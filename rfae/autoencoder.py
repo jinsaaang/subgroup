@@ -1,5 +1,5 @@
 """
-trainer_triplet_loop.py
+triplet_autoencoder.py
 ────────────────────────────────────────────────────────
 Two-stage AE → Triplet fine-tune with easy→hard schedule
 and adaptive re-clustering (RF-AE backbone)
@@ -183,10 +183,10 @@ class LeafClusterMiner:
     
 # ------------------ Loss ------------------ #
 def triplet_loss(za, zp, zn, margin=0.5): # margin...
-    # d_pos = F.pairwise_distance(za, zp, p=2) # metric L2 or cosine 
-    # d_neg = F.pairwise_distance(za, zn, p=2)
-    d_pos = 1.0 - F.cosine_similarity(za, zp, dim=1, eps=1e-8)
-    d_neg = 1.0 - F.cosine_similarity(za, zn, dim=1, eps=1e-8)
+    d_pos = F.pairwise_distance(za, zp, p=2) # metric L2 or cosine 
+    d_neg = F.pairwise_distance(za, zn, p=2)
+    # d_pos = 1.0 - F.cosine_similarity(za, zp, dim=1, eps=1e-8)
+    # d_neg = 1.0 - F.cosine_similarity(za, zn, dim=1, eps=1e-8)
     loss = F.relu(d_pos - d_neg + margin).mean()
     return loss
 
@@ -325,8 +325,8 @@ class Trainer:
             # fine-tune with easy→hard curriculum
             for t in range(T):
                 mode = "easy" if t < T//2 else "hard"
-                losses = self._epoch_step(loader, lambda_r*0.5, (1-lambda_r)*0.5, # error
-                                 0.5, self.miner, mode, margin)
+                # losses = self._epoch_step(loader, lambda_r*0.5, (1-lambda_r)*0.5, 0.5, self.miner, mode, margin)
+                losses = self._epoch_step(loader, 0, 0, 1, self.miner, mode, margin) # only triplet loss
                 if (t+1) % 10 == 0:
                     print(f"[Round {r}][Epoch {t+1}][{mode.upper()} Sample] "
                           f"loss={losses['total']:.4f} | "

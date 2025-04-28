@@ -1,6 +1,6 @@
 # General settings
 dataset: "adult"  # 
-random_state: 1  # 
+random_state: 42  # 
 
 # Training hyperparameters
 batch_size: 512
